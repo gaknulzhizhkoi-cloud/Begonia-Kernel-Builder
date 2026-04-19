@@ -17,7 +17,7 @@ jobs:
   Set-repos:
     name: "🐂 Parse repos.json"
     runs-on: ubuntu-latest
-    if: github.repository_owner == 'cvnertnc' && github.repository == 'cvnertnc/Begonia-Kernel-Builder'
+    if: github.repository_owner == 'gaknulzhizhkoi-cloud' && github.repository == 'gaknulzhizhkoi-cloud/Begonia-Kernel-Builder'
     outputs:
       repos: ${{ steps.generate-matrix.outputs.repos }}
       builddate: ${{ steps.generate-builddate.outputs.builddate }}
@@ -38,7 +38,7 @@ jobs:
   Build-Kernel:
     name: "🐎 Build kernel"
     runs-on: ubuntu-latest
-    if: github.repository_owner == 'cvnertnc' && github.repository == 'cvnertnc/Begonia-Kernel-Builder'
+    if: github.repository_owner == 'gaknulzhizhkoi-cloud' && github.repository == 'gaknulzhizhkoi-cloud/Begonia-Kernel-Builder'
     needs:
       - Set-repos
     strategy:
@@ -64,9 +64,9 @@ jobs:
     steps:
       - name: "🟣 Set Kernel Variables"
         run: |
-          echo "KERNEL_NAME=${{ matrix.repos.kernelSource.name }}" >> $GITHUB_ENV
-          echo "KERNEL_REPO=${{ matrix.repos.kernelSource.repo }}" >> $GITHUB_ENV
-          echo "KERNEL_BRANCH=${{ matrix.repos.kernelSource.branch }}" >> $GITHUB_ENV
+          echo "KERNEL_NAME=$(echo '${{ matrix.repos.kernelSource.name }}' | xargs)" >> $GITHUB_ENV
+          echo "KERNEL_REPO=$(echo '${{ matrix.repos.kernelSource.repo }}' | xargs)" >> $GITHUB_ENV
+          echo "KERNEL_BRANCH=$(echo '${{ matrix.repos.kernelSource.branch }}' | xargs)" >> $GITHUB_ENV
 
           echo "toolchains=$(echo '${{ toJSON(matrix.repos.toolchains) }}' | jq -c)" >> $GITHUB_ENV
           echo "params=$(echo '${{ toJSON(matrix.repos.params) }}' | jq -c)" >> $GITHUB_ENV
@@ -119,8 +119,8 @@ jobs:
         env:
           params: "${{ toJSON(matrix.repos.AnyKernel3) }}"
         run: |
-          ANYKERNEL_REPO=$(echo $params | jq -r ".repo")
-          ANYKERNEL_BRANCH=$(echo $params | jq -r ".branch")
+          ANYKERNEL_REPO=$(echo $params | jq -r ".repo" | xargs)
+          ANYKERNEL_BRANCH=$(echo $params | jq -r ".branch" | xargs)
           git clone --recursive --depth=1 -j $(nproc) --branch $ANYKERNEL_BRANCH $ANYKERNEL_REPO AnyKernel3
 
           echo "🤔 Setup Anykernel3 => ($ANYKERNEL_REPO)"
@@ -138,10 +138,8 @@ jobs:
           echo "🤔 There is $toolchains_num defined toolchains."
           for ((i=0;i<toolchains_num;i++)); do
             toolchain_name=$(echo $toolchains | jq -r ".[$i].name")
-            # Github
-            toolchain_repo=$(echo $toolchains | jq -r ".[$i].repo")
-            toolchain_branch=$(echo $toolchains | jq -r ".[$i].branch")
-            # From archive
+            toolchain_repo=$(echo $toolchains | jq -r ".[$i].repo" | xargs)
+            toolchain_branch=$(echo $toolchains | jq -r ".[$i].branch" | xargs)
             toolchain_url=$(echo $toolchains | jq -r ".[$i].url")
 
             echo $toolchain_url
@@ -276,6 +274,21 @@ jobs:
           chmod +x BKB/kernel_patches/bkb/$BKB_YML/add_susfs_patches.sh
           ./BKB/kernel_patches/bkb/$BKB_YML/add_susfs_patches.sh
 
+      - name: "🔧 Spoof kernel version and build time"
+        working-directory: ${{ env.KERNEL_NAME }}
+        run: |
+          # Подмена времени сборки на стоковое для begonia
+          echo "KBUILD_BUILD_TIMESTAMP=Wed Apr 14 18:14:46 CST 2021" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_USER=user" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_HOST=localhost" >> $GITHUB_ENV
+          
+          # Подмена localversion для получения 4.14.141-g681944a
+          # Версия 4.14.141 должна совпадать с Makefile ядра в репозитории!
+          echo "-g681944a" > localversion
+          
+          echo "🤔 Kernel version spoofed: 4.14.141-g681944a"
+          echo "🤔 Build timestamp spoofed: Wed Apr 14 18:14:46 CST 2021"
+
       - name: "👍 Make defconfig"
         working-directory: ${{ env.KERNEL_NAME }}
         env:
@@ -309,7 +322,7 @@ jobs:
         if: ${{ env.useAnykernel == 'true' }}
         env:
           arch: ${{ steps.generate-args.outputs.ARCH }}
-          anykernel: "${{ env.WORKSPACE }}/${{ env.KERNEL_DEVICE }}-${{ steps.integrate-kernelsu-next.outputs.ROOT_VERSION }}-${{ env.KERNEL_NAME }}-${{ env.builddate }}"
+          anykernel: "${{ env.WORKSPACE }}/${{ env.KERNEL_DEVICE }}-${{ env.builddate }}"
         run: |
           ls -al
 
@@ -324,7 +337,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: ${{ env.useAnykernel == 'true' }}
         with:
-          name: "${{ env.KERNEL_DEVICE }}-${{ steps.integrate-kernelsu-next.outputs.ROOT_VERSION }}-${{ env.KERNEL_NAME }}-${{ env.builddate }}"
+          name: "${{ env.KERNEL_DEVICE }}-${{ env.builddate }}"
           path: AnyKernel3/*
 
       - name: 🧧 Create GitHub Release => (${{ env.builddate }})
@@ -338,7 +351,7 @@ jobs:
           prerelease: false
           draft: false
           generate_release_notes: false
-          body: "Power kernel By [Saikrishna1504](https://github.com/Saikrishna1504)\nBuild with Github by [cvnertnc](https://github.com/cvnertnc)\nAll Linux kernel patched with [KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next) + [SUSFS](https://gitlab.com/simonpunk/susfs4ksu) for Xiaomi Redmi Note 8 Pro (begonia).\n\n**Installation:**\n1. Flash the kernel from this release.\n2. Download and install the Manager\n\nKernelSU Next:\n> [![Stable Version](https://img.shields.io/github/v/release/KernelSU-Next/KernelSU-Next?label=Release&logo=github)](https://github.com/KernelSU-Next/KernelSU-Next/releases/latest) [![Nightly Version](https://img.shields.io/badge/Nightly%20Release-gray?logo=hackthebox&logoColor=fff)](https://nightly.link/KernelSU-Next/KernelSU-Next/workflows/build-manager-ci/next/Manager)\n\n3. Download and install the SUSFS Module:\n> [![Stable Version](https://img.shields.io/github/v/release/sidex15/susfs4ksu-module?label=Release&logo=github)](https://github.com/sidex15/susfs4ksu-module/releases/latest) [![Nightly Version](https://img.shields.io/badge/Nightly%20Release-gray?logo=hackthebox&logoColor=fff)](https://nightly.link/sidex15/susfs4ksu-module/workflows/build/v1.5.2+)\n\n4. Download and install Mountify Module [![Mountify Module](https://img.shields.io/github/v/release/backslashxx/mountify?label=Release&logo=github)](https://github.com/backslashxx/mountify/releases/latest)"
-          files: "${{ env.WORKSPACE }}/${{ env.KERNEL_DEVICE }}-${{ steps.integrate-kernelsu-next.outputs.ROOT_VERSION }}-${{ env.KERNEL_NAME }}-${{ env.builddate }}.zip"
+          body: "Kernel for Xiaomi Redmi Note 8 Pro (begonia)\nBuilt with [KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next) + [SUSFS](https://gitlab.com/simonpunk/susfs4ksu)\nVersion: 4.14.141-g681944a\nBuild time: Wed Apr 14 18:14:46 CST 2021\n\n**Installation:**\n1. Flash the kernel from this release.\n2. Download and install the Manager\n\nKernelSU Next:\n> [![Stable Version](https://img.shields.io/github/v/release/KernelSU-Next/KernelSU-Next?label=Release&logo=github)](https://github.com/KernelSU-Next/KernelSU-Next/releases/latest) [![Nightly Version](https://img.shields.io/badge/Nightly%20Release-gray?logo=hackthebox&logoColor=fff)](https://nightly.link/KernelSU-Next/KernelSU-Next/workflows/build-manager-ci/next/Manager)\n\n3. Download and install the SUSFS Module:\n> [![Stable Version](https://img.shields.io/github/v/release/sidex15/susfs4ksu-module?label=Release&logo=github)](https://github.com/sidex15/susfs4ksu-module/releases/latest) [![Nightly Version](https://img.shields.io/badge/Nightly%20Release-gray?logo=hackthebox&logoColor=fff)](https://nightly.link/sidex15/susfs4ksu-module/workflows/build/v1.5.2+)\n\n4. Download and install Mountify Module [![Mountify Module](https://img.shields.io/github/v/release/backslashxx/mountify?label=Release&logo=github)](https://github.com/backslashxx/mountify/releases/latest)"
+          files: "${{ env.WORKSPACE }}/${{ env.KERNEL_DEVICE }}-${{ env.builddate }}.zip"
           fail_on_unmatched_files: true
           preserve_order: true
